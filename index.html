@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Relationship Runway</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Private Relationship Planner</p>
+          <h1>Stay ahead of the dates that matter.</h1>
+          <p class="hero-copy">
+            A year-at-a-glance timeline for big dates, prep deadlines, and the
+            stuff that slips if you leave it too late.
+          </p>
+        </div>
+        <div class="hero-controls">
+          <button id="openEditorButton" class="button button-primary" type="button">
+            Add event
+          </button>
+          <button id="todayButton" class="button button-secondary" type="button">
+            Jump to today
+          </button>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="calendar-panel panel">
+          <div class="panel-header">
+            <div>
+              <p class="panel-label">Year View</p>
+              <h2 id="yearHeading"></h2>
+            </div>
+            <div class="view-controls">
+              <div class="year-nav">
+                <button id="prevYearButton" class="icon-button" type="button" aria-label="Previous year">
+                  &#8592;
+                </button>
+                <button id="nextYearButton" class="icon-button" type="button" aria-label="Next year">
+                  &#8594;
+                </button>
+              </div>
+              <label class="zoom-control" for="zoomRange">
+                <span>Zoom</span>
+                <input id="zoomRange" type="range" min="85" max="130" value="100" />
+              </label>
+            </div>
+          </div>
+          <div id="statusBanner" class="status-banner hidden"></div>
+          <div id="calendarViewport" class="calendar-viewport">
+            <div id="calendarGrid" class="calendar-grid"></div>
+          </div>
+        </section>
+
+        <aside class="sidebar">
+          <section class="panel summary-panel">
+            <div class="panel-header compact">
+              <div>
+                <p class="panel-label">Focus</p>
+                <h2>Upcoming deadlines</h2>
+              </div>
+            </div>
+            <div class="summary-metrics">
+              <article>
+                <span id="overdueCount">0</span>
+                <p>Overdue</p>
+              </article>
+              <article>
+                <span id="dueSoonCount">0</span>
+                <p>Next 30 days</p>
+              </article>
+              <article>
+                <span id="doneCount">0</span>
+                <p>Completed</p>
+              </article>
+            </div>
+            <div id="deadlineList" class="deadline-list"></div>
+          </section>
+
+          <section class="panel legend-panel">
+            <div class="panel-header compact">
+              <div>
+                <p class="panel-label">Legend</p>
+                <h2>How it reads</h2>
+              </div>
+            </div>
+            <ul class="legend-list">
+              <li><span class="dot dot-event"></span>Date that matters</li>
+              <li><span class="dot dot-soon"></span>Deadline coming up</li>
+              <li><span class="dot dot-overdue"></span>Deadline overdue</li>
+              <li><span class="dot dot-done"></span>Completed</li>
+            </ul>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <dialog id="editorDialog" class="editor-dialog">
+      <form id="eventForm" class="editor-form" method="dialog">
+        <div class="editor-header">
+          <div>
+            <p class="panel-label">Manage Event</p>
+            <h2 id="dialogTitle">Add event</h2>
+          </div>
+          <button id="closeEditorButton" class="icon-button" type="button" aria-label="Close editor">
+            &#10005;
+          </button>
+        </div>
+
+        <input id="eventId" name="eventId" type="hidden" />
+
+        <label>
+          <span>Event title</span>
+          <input id="eventTitle" name="title" type="text" maxlength="120" required />
+        </label>
+
+        <div class="form-row">
+          <label>
+            <span>Event date</span>
+            <input id="eventDate" name="eventDate" type="date" required />
+          </label>
+          <label>
+            <span>Recurrence</span>
+            <select id="eventRecurrence" name="recurrence">
+              <option value="yearly">Repeats every year</option>
+              <option value="one_time">One time only</option>
+            </select>
+          </label>
+        </div>
+
+        <label>
+          <span>Notes</span>
+          <textarea id="eventNotes" name="notes" rows="3" maxlength="500"></textarea>
+        </label>
+
+        <div class="deadline-builder">
+          <div class="deadline-builder-header">
+            <div>
+              <p class="panel-label">Prep Deadlines</p>
+              <h3>What needs to happen before it?</h3>
+              <p class="builder-note">Optional. Add deadlines only when this event needs prep work.</p>
+            </div>
+            <button id="addDeadlineButton" class="button button-secondary" type="button">
+              Add deadline
+            </button>
+          </div>
+          <div id="deadlineFields" class="deadline-fields"></div>
+        </div>
+
+        <div class="editor-actions">
+          <button id="deleteEventButton" class="button button-danger hidden" type="button">
+            Delete event
+          </button>
+          <div class="editor-actions-right">
+            <button id="cancelEditorButton" class="button button-secondary" type="button">
+              Cancel
+            </button>
+            <button class="button button-primary" type="submit">Save event</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+
+    <template id="deadlineFieldTemplate">
+      <article class="deadline-card">
+        <input class="deadline-id" type="hidden" />
+        <label>
+          <span>Deadline title</span>
+          <input class="deadline-title" type="text" maxlength="120" required />
+        </label>
+        <div class="form-row">
+          <label>
+            <span>Timing</span>
+            <select class="deadline-mode">
+              <option value="days_before_event">Days before event</option>
+              <option value="specific_date">Specific date</option>
+            </select>
+          </label>
+          <label class="deadline-days-group">
+            <span>Days before</span>
+            <input class="deadline-days" type="number" min="0" max="365" value="30" />
+          </label>
+          <label class="deadline-date-group hidden">
+            <span>Specific date</span>
+            <input class="deadline-date" type="date" />
+          </label>
+        </div>
+        <label>
+          <span>Notes</span>
+          <textarea class="deadline-notes" rows="2" maxlength="300"></textarea>
+        </label>
+        <button class="button button-link deadline-remove" type="button">Remove deadline</button>
+      </article>
+    </template>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
