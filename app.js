@@ -32,7 +32,6 @@ const elements = {
   authStatus: document.querySelector("#authStatus"),
   appShell: document.querySelector("#appShell"),
   currentUserEmail: document.querySelector("#currentUserEmail"),
-  logoutButton: document.querySelector("#logoutButton"),
   openEditorButton: document.querySelector("#openEditorButton"),
   yearHeading: document.querySelector("#yearHeading"),
   calendarGrid: document.querySelector("#calendarGrid"),
@@ -87,7 +86,6 @@ async function init() {
 
 function bindUI() {
   elements.authForm.addEventListener("submit", handleCodeSubmit);
-  elements.logoutButton.addEventListener("click", handleLogout);
   elements.openEditorButton.addEventListener("click", () => openEditor());
   document.querySelector("#closeEditorButton").addEventListener("click", closeEditor);
   document.querySelector("#cancelEditorButton").addEventListener("click", closeEditor);
@@ -143,12 +141,6 @@ async function handleCodeSubmit(event) {
   showAuthState(true);
   showAuthStatus("");
   await refreshData();
-}
-
-function handleLogout() {
-  clearStoredAccess();
-  resetPlannerState();
-  showAuthState(false);
 }
 
 function readStoredAccess() {
@@ -310,9 +302,9 @@ async function ensureRecurringOccurrences(years) {
 
 function getYearForOneTimeDeadline(deadline, event) {
   if (deadline.due_mode === "specific_date" && deadline.due_date) {
-    return new Date(deadline.due_date).getFullYear();
+    return parseDateOnly(deadline.due_date).getFullYear();
   }
-  return new Date(event.event_date).getFullYear();
+  return parseDateOnly(event.event_date).getFullYear();
 }
 
 function computeDeadlineDate(deadline, event, year) {
@@ -330,7 +322,7 @@ function computeDeadlineDate(deadline, event, year) {
   }
 
   if (event.recurrence_type === "yearly") {
-    const base = new Date(deadline.due_date);
+    const base = parseDateOnly(deadline.due_date);
     return toISODate(new Date(year, base.getMonth(), base.getDate()));
   }
 
@@ -386,7 +378,7 @@ function renderDayClusters(entries) {
   const grouped = new Map();
 
   for (const entry of entries) {
-    const day = new Date(entry.date).getDate();
+    const day = parseDateOnly(entry.date).getDate();
     if (!grouped.has(day)) {
       grouped.set(day, []);
     }
@@ -413,7 +405,7 @@ function renderTimelineItem(item) {
       <article class="timeline-item event">
         <div class="timeline-meta">
           <strong>${escapeHtml(item.title)}</strong>
-          <span>${weekdayFormatter.format(new Date(item.date))}</span>
+          <span>${weekdayFormatter.format(parseDateOnly(item.date))}</span>
         </div>
         ${item.notes ? `<p class="timeline-notes">${escapeHtml(item.notes)}</p>` : ""}
         <div class="timeline-actions">
@@ -453,7 +445,7 @@ function renderTimelineItem(item) {
 function renderUpcomingDeadlines() {
   const occurrences = getVisibleDeadlineOccurrences()
     .filter((occurrence) => !occurrence.completed)
-    .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))
+    .sort((a, b) => parseDateOnly(a.due_date) - parseDateOnly(b.due_date))
     .slice(0, 18);
 
   const stats = {
@@ -466,7 +458,7 @@ function renderUpcomingDeadlines() {
   const yearAhead = addDays(now, 365);
 
   for (const occurrence of getVisibleDeadlineOccurrences()) {
-    const due = startOfDay(new Date(occurrence.due_date));
+    const due = startOfDay(parseDateOnly(occurrence.due_date));
     if (due > yearAhead) {
       continue;
     }
@@ -510,7 +502,7 @@ function renderUpcomingDeadlines() {
               <p class="deadline-context">${escapeHtml(event?.title || "Unknown event")}</p>
             </div>
             <div class="deadline-row-meta">
-              <p class="deadline-row-date">${longDateFormatter.format(new Date(occurrence.due_date))}</p>
+              <p class="deadline-row-date">${longDateFormatter.format(parseDateOnly(occurrence.due_date))}</p>
               <span class="pill">${status.label}</span>
             </div>
           </div>
@@ -546,7 +538,7 @@ function getVisibleDeadlineOccurrences() {
       return false;
     }
 
-    const due = startOfDay(new Date(occurrence.due_date));
+    const due = startOfDay(parseDateOnly(occurrence.due_date));
     if (due < now || due > yearAhead) {
       return false;
     }
@@ -583,7 +575,7 @@ function getEntriesForMonth(year, monthIndex) {
   }
 
   for (const occurrence of state.occurrences) {
-    const dueDate = new Date(occurrence.due_date);
+    const dueDate = parseDateOnly(occurrence.due_date);
     if (dueDate.getFullYear() !== year || dueDate.getMonth() !== monthIndex) {
       continue;
     }
@@ -608,7 +600,7 @@ function getEntriesForMonth(year, monthIndex) {
     });
   }
 
-  return entries.sort((a, b) => new Date(a.date) - new Date(b.date));
+  return entries.sort((a, b) => parseDateOnly(a.date) - parseDateOnly(b.date));
 }
 
 function normalizeEventDate(event, year) {
@@ -616,7 +608,7 @@ function normalizeEventDate(event, year) {
     return null;
   }
 
-  const baseDate = new Date(event.event_date);
+  const baseDate = parseDateOnly(event.event_date);
   if (event.recurrence_type === "yearly") {
     return new Date(year, baseDate.getMonth(), baseDate.getDate());
   }
@@ -633,7 +625,7 @@ function getDeadlineStatus(occurrence) {
     return { className: "done", label: "Done" };
   }
 
-  const due = startOfDay(new Date(occurrence.due_date));
+  const due = startOfDay(parseDateOnly(occurrence.due_date));
   const diffDays = diffInDays(startOfDay(today), due);
 
   if (diffDays < 0) {
@@ -652,7 +644,7 @@ function getDeadlineUrgencyColor(occurrence) {
     return "#3d8b68";
   }
 
-  const due = startOfDay(new Date(occurrence.due_date));
+  const due = startOfDay(parseDateOnly(occurrence.due_date));
   const diffDays = diffInDays(startOfDay(today), due);
 
   if (diffDays <= 0) {
@@ -1014,7 +1006,7 @@ function toISODate(date) {
 }
 
 function formatRelativeDate(dateString) {
-  const target = startOfDay(new Date(dateString));
+  const target = startOfDay(parseDateOnly(dateString));
   const days = diffInDays(startOfDay(today), target);
   if (days === 0) {
     return "today";
@@ -1023,6 +1015,23 @@ function formatRelativeDate(dateString) {
     return `in ${days}d`;
   }
   return `${Math.abs(days)}d ago`;
+}
+
+function parseDateOnly(value) {
+  if (value instanceof Date) {
+    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  }
+
+  if (typeof value === "string") {
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (match) {
+      const [, year, month, day] = match;
+      return new Date(Number(year), Number(month) - 1, Number(day));
+    }
+  }
+
+  const fallback = new Date(value);
+  return new Date(fallback.getFullYear(), fallback.getMonth(), fallback.getDate());
 }
 
 function escapeHtml(value) {

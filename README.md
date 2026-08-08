@@ -45,4 +45,3 @@ This version uses a lightweight code gate, not real authentication. The browser 
 - A user enters a shared code in the browser.
 - The app looks up that code in `access_codes`.
 - The browser stores that selected code locally and reloads the same planner next time.
-- `Switch code` clears the saved browser state and returns to the code screen.
