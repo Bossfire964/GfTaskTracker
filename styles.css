@@ -1,7 +1,7 @@
 :root {
   --bg: #f4efe6;
   --bg-elevated: rgba(255, 249, 240, 0.84);
-  --panel: rgba(255, 252, 247, 0.88);
+  --panel: rgba(255, 252, 247, 0.97);
   --panel-strong: #fffaf3;
   --ink: #2d241d;
   --muted: #756559;
@@ -12,26 +12,19 @@
   --warning-soft: #ffe4e0;
   --soon: #f0a33c;
   --done: #3d8b68;
-  --shadow: 0 24px 64px rgba(93, 62, 41, 0.13);
+  --shadow: 0 10px 24px rgba(93, 62, 41, 0.08);
 }
 
 * {
   box-sizing: border-box;
 }
 
-html {
-  scroll-behavior: smooth;
-}
-
 body {
   margin: 0;
   min-height: 100vh;
   color: var(--ink);
-  font-family: "Space Grotesk", sans-serif;
-  background:
-    radial-gradient(circle at top left, rgba(255, 214, 176, 0.9), transparent 28%),
-    radial-gradient(circle at top right, rgba(239, 161, 124, 0.55), transparent 25%),
-    linear-gradient(180deg, #f7f2e7 0%, #ede2d4 100%);
+  font-family: "Avenir Next", Avenir, "Segoe UI", sans-serif;
+  background: linear-gradient(180deg, #f6f0e6 0%, #ece0d2 100%);
 }
 
 button,
@@ -51,6 +44,47 @@ button {
 
 .app-shell {
   padding: 32px;
+}
+
+.auth-gate {
+  width: min(640px, calc(100vw - 32px));
+  margin: 48px auto;
+  padding: 28px;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.auth-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.auth-form input {
+  width: 100%;
+  border: 1px solid rgba(80, 56, 34, 0.14);
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+}
+
+.auth-status {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(228, 244, 233, 0.92);
+  color: #27563f;
+}
+
+.auth-status.auth-status-error {
+  background: rgba(255, 229, 221, 0.95);
+  color: #7d2d1c;
 }
 
 .hero {
@@ -74,7 +108,7 @@ button {
 .panel h2,
 .deadline-builder h3 {
   margin: 0;
-  font-family: "Fraunces", serif;
+  font-family: Georgia, "Times New Roman", serif;
   font-weight: 700;
 }
 
@@ -95,6 +129,13 @@ button {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.current-user-email {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 .layout {
@@ -109,12 +150,10 @@ button {
   border: 1px solid var(--border);
   border-radius: 28px;
   box-shadow: var(--shadow);
-  backdrop-filter: blur(18px);
 }
 
 .calendar-panel,
-.summary-panel,
-.legend-panel {
+.summary-panel {
   padding: 22px;
 }
 
@@ -129,9 +168,7 @@ button {
   align-items: start;
 }
 
-.view-controls,
 .year-nav,
-.zoom-control,
 .editor-actions,
 .editor-actions-right {
   display: flex;
@@ -139,25 +176,16 @@ button {
   gap: 12px;
 }
 
-.zoom-control {
-  color: var(--muted);
-  font-size: 0.92rem;
-}
-
-.zoom-control input {
-  width: 108px;
-}
-
 .button,
 .icon-button {
   border: 0;
   border-radius: 999px;
-  transition: transform 140ms ease, opacity 140ms ease, background 140ms ease;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
 .button:hover,
 .icon-button:hover {
-  transform: translateY(-1px);
+  opacity: 0.92;
 }
 
 .button {
@@ -207,8 +235,8 @@ button {
 
 .calendar-viewport {
   margin-top: 18px;
-  overflow: auto;
-  max-height: calc(100vh - 230px);
+  overflow: visible;
+  max-height: none;
   padding: 6px 4px 18px;
 }
 
@@ -216,7 +244,6 @@ button {
   display: grid;
   grid-template-columns: repeat(2, minmax(300px, 1fr));
   gap: 16px;
-  transform-origin: top center;
 }
 
 .month-card {
@@ -225,6 +252,9 @@ button {
   border-radius: 24px;
   background: var(--panel-strong);
   border: 1px solid rgba(80, 56, 34, 0.1);
+  content-visibility: auto;
+  contain: layout paint style;
+  contain-intrinsic-size: 320px 340px;
 }
 
 .month-header {
@@ -237,7 +267,7 @@ button {
 
 .month-header h3 {
   margin: 0;
-  font-family: "Fraunces", serif;
+  font-family: Georgia, "Times New Roman", serif;
   font-size: 1.4rem;
 }
 
@@ -392,10 +422,6 @@ button {
   border: 1px solid rgba(80, 56, 34, 0.08);
 }
 
-.deadline-row.overdue {
-  background: var(--warning-soft);
-}
-
 .deadline-row.done {
   background: rgba(225, 245, 236, 0.95);
 }
@@ -407,48 +433,43 @@ button {
   align-items: start;
 }
 
+.deadline-row-main {
+  min-width: 0;
+}
+
+.deadline-row-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .deadline-row h3 {
   margin: 0 0 2px;
   font-size: 0.95rem;
 }
 
-.legend-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.deadline-row-meta {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  align-items: flex-end;
+  gap: 4px;
+  flex: 0 0 auto;
 }
 
-.legend-list li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.deadline-row-date {
+  margin: 0;
   color: var(--muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
 }
 
-.dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.dot-event {
-  background: var(--accent);
-}
-
-.dot-soon {
-  background: var(--soon);
-}
-
-.dot-overdue {
-  background: var(--warning);
-}
-
-.dot-done {
-  background: var(--done);
+.urgency-indicator {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  border-radius: 999px;
+  background: #4f79d9;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.72);
 }
 
 .editor-dialog {
@@ -461,7 +482,6 @@ button {
 
 .editor-dialog::backdrop {
   background: rgba(45, 36, 29, 0.48);
-  backdrop-filter: blur(6px);
 }
 
 .editor-form {
@@ -549,10 +569,6 @@ button {
     grid-template-columns: 1fr;
   }
 
-  .calendar-viewport {
-    max-height: none;
-  }
-
   .sidebar {
     order: -1;
   }
@@ -577,13 +593,16 @@ button {
     grid-template-columns: 1fr;
   }
 
-  .view-controls,
   .hero-controls,
   .editor-actions-right {
     width: 100%;
   }
 
-  .view-controls {
-    justify-content: space-between;
+  .deadline-row-header {
+    align-items: stretch;
+  }
+
+  .deadline-row-meta {
+    align-items: flex-start;
   }
 }

@@ -13,12 +13,15 @@ Static GitHub Pages app for tracking important yearly dates and the prep deadlin
 ## Supabase setup
 
 1. In Supabase, open the SQL editor and run `supabase-schema.sql`.
-2. Open `config.js` and replace:
+2. In `Authentication -> Providers`, enable Email and magic-link login.
+3. In `Authentication -> URL Configuration`, add:
+   - your GitHub Pages URL
+   - `http://localhost:8000`
+4. In `Authentication -> Users`, create the small set of users who should have access.
+5. Open `config.js` and replace:
    - `supabaseUrl`
    - `supabaseAnonKey`
-   - `workspaceKey` if you want a different shared dataset label
-3. In Supabase `Project Settings -> API`, copy the project URL and anon public key.
-4. Keep this repo private if you do not want the config public in source control.
+6. In Supabase `Project Settings -> API`, copy the project URL and anon public key.
 
 ## Hosting on GitHub Pages
 
@@ -28,7 +31,7 @@ Static GitHub Pages app for tracking important yearly dates and the prep deadlin
 
 ## Notes about privacy
 
-This app has no login. Anyone with the deployed source and your public anon key can inspect the frontend behavior, and the current SQL policies allow anonymous reads and writes. That is acceptable for a lightweight personal tool, but it is not strong security.
+This app uses Supabase Auth with magic-link email login. The anon key is still public in the frontend, but planner data is protected by Row Level Security so each authenticated user can only access their own rows.
 
 ## How recurring deadlines work
 
@@ -37,3 +40,10 @@ This app has no login. Anyone with the deployed source and your public anon key 
   - `days_before_event`: good for gift prep or outfit planning
   - `specific_date`: good for fixed dates you want attached to the event
 - The app automatically creates deadline occurrence rows for the current and next year so completion can be tracked per year.
+
+## Auth flow
+
+- A user enters their email in the browser.
+- Supabase sends a magic link.
+- Opening that link in the same browser signs the user in and loads only their planner data.
+- Logging out returns the browser to the sign-in screen.

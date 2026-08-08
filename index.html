@@ -4,16 +4,29 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Relationship Runway</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap"
-      rel="stylesheet"
-    />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <div class="app-shell">
+    <section id="authGate" class="auth-gate panel">
+      <div class="auth-copy">
+        <p class="eyebrow">Private Relationship Planner</p>
+        <h1>Sign in to your planner.</h1>
+        <p class="hero-copy">
+          Use the email address you created in Supabase. The site sends a magic
+          link and opens your private planner in this browser.
+        </p>
+      </div>
+      <form id="authForm" class="auth-form">
+        <label>
+          <span>Email</span>
+          <input id="authEmail" type="email" autocomplete="email" required />
+        </label>
+        <button class="button button-primary" type="submit">Send magic link</button>
+        <p id="authStatus" class="auth-status hidden"></p>
+      </form>
+    </section>
+
+    <div id="appShell" class="app-shell hidden">
       <header class="hero">
         <div>
           <p class="eyebrow">Private Relationship Planner</p>
@@ -24,11 +37,12 @@
           </p>
         </div>
         <div class="hero-controls">
+          <p id="currentUserEmail" class="current-user-email"></p>
           <button id="openEditorButton" class="button button-primary" type="button">
             Add event
           </button>
-          <button id="todayButton" class="button button-secondary" type="button">
-            Jump to today
+          <button id="logoutButton" class="button button-secondary" type="button">
+            Log out
           </button>
         </div>
       </header>
@@ -40,19 +54,13 @@
               <p class="panel-label">Year View</p>
               <h2 id="yearHeading"></h2>
             </div>
-            <div class="view-controls">
-              <div class="year-nav">
-                <button id="prevYearButton" class="icon-button" type="button" aria-label="Previous year">
-                  &#8592;
-                </button>
-                <button id="nextYearButton" class="icon-button" type="button" aria-label="Next year">
-                  &#8594;
-                </button>
-              </div>
-              <label class="zoom-control" for="zoomRange">
-                <span>Zoom</span>
-                <input id="zoomRange" type="range" min="85" max="130" value="100" />
-              </label>
+            <div class="year-nav">
+              <button id="prevYearButton" class="icon-button" type="button" aria-label="Previous year">
+                &#8592;
+              </button>
+              <button id="nextYearButton" class="icon-button" type="button" aria-label="Next year">
+                &#8594;
+              </button>
             </div>
           </div>
           <div id="statusBanner" class="status-banner hidden"></div>
@@ -84,21 +92,6 @@
               </article>
             </div>
             <div id="deadlineList" class="deadline-list"></div>
-          </section>
-
-          <section class="panel legend-panel">
-            <div class="panel-header compact">
-              <div>
-                <p class="panel-label">Legend</p>
-                <h2>How it reads</h2>
-              </div>
-            </div>
-            <ul class="legend-list">
-              <li><span class="dot dot-event"></span>Date that matters</li>
-              <li><span class="dot dot-soon"></span>Deadline coming up</li>
-              <li><span class="dot dot-overdue"></span>Deadline overdue</li>
-              <li><span class="dot dot-done"></span>Completed</li>
-            </ul>
           </section>
         </aside>
       </main>

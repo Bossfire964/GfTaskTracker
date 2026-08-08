@@ -4,12 +4,11 @@ const today = new Date();
 
 const state = {
   currentYear: today.getFullYear(),
-  zoom: 1,
   events: [],
   deadlines: [],
   occurrences: [],
-  expandedEventId: null,
-  editingEventId: null,
+  user: null,
+  loginEmail: "",
   isConfigured: Boolean(
     config.supabaseUrl &&
       config.supabaseAnonKey &&
@@ -27,15 +26,21 @@ const longDateFormatter = new Intl.DateTimeFormat("en-US", {
 });
 
 const elements = {
+  authGate: document.querySelector("#authGate"),
+  authForm: document.querySelector("#authForm"),
+  authEmail: document.querySelector("#authEmail"),
+  authStatus: document.querySelector("#authStatus"),
+  appShell: document.querySelector("#appShell"),
+  currentUserEmail: document.querySelector("#currentUserEmail"),
+  logoutButton: document.querySelector("#logoutButton"),
+  openEditorButton: document.querySelector("#openEditorButton"),
   yearHeading: document.querySelector("#yearHeading"),
   calendarGrid: document.querySelector("#calendarGrid"),
-  calendarViewport: document.querySelector("#calendarViewport"),
   deadlineList: document.querySelector("#deadlineList"),
   overdueCount: document.querySelector("#overdueCount"),
   dueSoonCount: document.querySelector("#dueSoonCount"),
   doneCount: document.querySelector("#doneCount"),
   statusBanner: document.querySelector("#statusBanner"),
-  zoomRange: document.querySelector("#zoomRange"),
   editorDialog: document.querySelector("#editorDialog"),
   eventForm: document.querySelector("#eventForm"),
   dialogTitle: document.querySelector("#dialogTitle"),
@@ -50,7 +55,13 @@ const elements = {
 };
 
 const supabase = state.isConfigured
-  ? createClient(config.supabaseUrl, config.supabaseAnonKey)
+  ? createClient(config.supabaseUrl, config.supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    })
   : null;
 
 init().catch((error) => {
@@ -60,26 +71,60 @@ init().catch((error) => {
 
 async function init() {
   bindUI();
-  applyZoom();
 
   if (!state.isConfigured) {
-    showStatus(
+    showAuthState(false);
+    showAuthStatus(
       "Add your Supabase project URL and anon key in config.js before the planner can load data.",
       true
     );
-    render();
     return;
   }
 
-  await refreshData();
-  scrollToToday();
+  const {
+    data: { session },
+    error
+  } = await supabase.auth.getSession();
+
+  if (error) {
+    showAuthState(false);
+    showAuthStatus(error.message, true);
+    return;
+  }
+
+  supabase.auth.onAuthStateChange(async (event, sessionData) => {
+    if (event === "SIGNED_OUT") {
+      resetPlannerState();
+      showAuthState(false);
+      showAuthStatus("Signed out.", false);
+      return;
+    }
+
+    if (sessionData?.user) {
+      state.user = sessionData.user;
+      state.currentYear = today.getFullYear();
+      showAuthState(true);
+      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") {
+        await refreshData();
+      }
+    }
+  });
+
+  if (session?.user) {
+    state.user = session.user;
+    showAuthState(true);
+    await refreshData();
+  } else {
+    showAuthState(false);
+  }
 }
 
 function bindUI() {
-  document.querySelector("#openEditorButton").addEventListener("click", () => openEditor());
+  elements.authForm.addEventListener("submit", handleLoginSubmit);
+  elements.logoutButton.addEventListener("click", handleLogout);
+  elements.openEditorButton.addEventListener("click", () => openEditor());
   document.querySelector("#closeEditorButton").addEventListener("click", closeEditor);
   document.querySelector("#cancelEditorButton").addEventListener("click", closeEditor);
-  document.querySelector("#todayButton").addEventListener("click", scrollToToday);
   document.querySelector("#prevYearButton").addEventListener("click", () => {
     state.currentYear -= 1;
     render();
@@ -91,21 +136,77 @@ function bindUI() {
       .catch((error) => showStatus(error.message, true));
   });
 
-  elements.zoomRange.addEventListener("input", (event) => {
-    state.zoom = Number(event.target.value) / 100;
-    applyZoom();
-  });
-
   elements.eventForm.addEventListener("submit", handleEventSubmit);
   elements.deleteEventButton.addEventListener("click", handleDeleteEvent);
   document.querySelector("#addDeadlineButton").addEventListener("click", () => {
     appendDeadlineField();
   });
-
   elements.editorDialog.addEventListener("close", resetEditor);
 }
 
+async function handleLoginSubmit(event) {
+  event.preventDefault();
+
+  const email = elements.authEmail.value.trim().toLowerCase();
+  if (!email) {
+    showAuthStatus("Enter the email address you created in Supabase.", true);
+    return;
+  }
+
+  state.loginEmail = email;
+  const redirectTo = `${window.location.origin}${window.location.pathname}`;
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: {
+      emailRedirectTo: redirectTo
+    }
+  });
+
+  if (error) {
+    showAuthStatus(error.message, true);
+    return;
+  }
+
+  showAuthStatus(`Magic link sent to ${email}. Open it in this browser to sign in.`, false);
+}
+
+async function handleLogout() {
+  const { error } = await supabase.auth.signOut();
+  if (error) {
+    showStatus(error.message, true);
+  }
+}
+
+function showAuthState(isSignedIn) {
+  elements.authGate.classList.toggle("hidden", isSignedIn);
+  elements.appShell.classList.toggle("hidden", !isSignedIn);
+  elements.currentUserEmail.textContent = state.user?.email || "";
+}
+
+function showAuthStatus(message, isError = false) {
+  elements.authStatus.textContent = message;
+  elements.authStatus.classList.remove("hidden");
+  elements.authStatus.classList.toggle("auth-status-error", isError);
+}
+
+function resetPlannerState() {
+  state.user = null;
+  state.events = [];
+  state.deadlines = [];
+  state.occurrences = [];
+  elements.calendarGrid.innerHTML = "";
+  elements.deadlineList.innerHTML = "";
+  elements.overdueCount.textContent = "0";
+  elements.dueSoonCount.textContent = "0";
+  elements.doneCount.textContent = "0";
+  closeEditor();
+}
+
 async function refreshData() {
+  if (!state.user) {
+    return;
+  }
+
   await fetchData();
   await ensureRecurringOccurrences([state.currentYear, state.currentYear + 1]);
   await fetchData();
@@ -115,23 +216,9 @@ async function refreshData() {
 async function fetchData() {
   const [{ data: events, error: eventsError }, { data: deadlines, error: deadlinesError }, { data: occurrences, error: occurrencesError }] =
     await Promise.all([
-      supabase
-        .from("events")
-        .select("*")
-        .eq("workspace_key", config.workspaceKey)
-        .eq("archived", false)
-        .order("event_date", { ascending: true }),
-      supabase
-        .from("deadlines")
-        .select("*")
-        .eq("workspace_key", config.workspaceKey)
-        .eq("archived", false)
-        .order("sort_order", { ascending: true }),
-      supabase
-        .from("deadline_occurrences")
-        .select("*")
-        .eq("workspace_key", config.workspaceKey)
-        .order("due_date", { ascending: true })
+      supabase.from("events").select("*").eq("archived", false).order("event_date", { ascending: true }),
+      supabase.from("deadlines").select("*").eq("archived", false).order("sort_order", { ascending: true }),
+      supabase.from("deadline_occurrences").select("*").order("due_date", { ascending: true })
     ]);
 
   if (eventsError || deadlinesError || occurrencesError) {
@@ -146,8 +233,11 @@ async function fetchData() {
 }
 
 async function ensureRecurringOccurrences(years) {
-  const recurringEvents = state.events.filter((event) => event.recurrence_type === "yearly");
-  if (!recurringEvents.length && !state.deadlines.some((deadline) => deadline.due_mode === "specific_date")) {
+  if (!state.user) {
+    return;
+  }
+
+  if (!state.deadlines.length) {
     return;
   }
 
@@ -182,8 +272,8 @@ async function ensureRecurringOccurrences(years) {
       }
 
       rowsToInsert.push({
+        owner_user_id: state.user.id,
         deadline_id: deadline.id,
-        workspace_key: config.workspaceKey,
         occurrence_year: year,
         due_date: dueDate,
         completed: false
@@ -232,18 +322,24 @@ function computeDeadlineDate(deadline, event, year) {
 }
 
 function render() {
-  elements.yearHeading.textContent = String(state.currentYear);
-  renderCalendar();
+  if (!state.user) {
+    return;
+  }
+
+  const displayedMonths = getDisplayedMonths();
+  elements.yearHeading.textContent = formatDisplayedRange(displayedMonths);
+  renderCalendar(displayedMonths);
   renderUpcomingDeadlines();
 }
 
-function renderCalendar() {
-  const months = Array.from({ length: 12 }, (_, monthIndex) => {
-    const date = new Date(state.currentYear, monthIndex, 1);
+function renderCalendar(displayedMonths) {
+  const months = displayedMonths.map(({ year, monthIndex }) => {
+    const date = new Date(year, monthIndex, 1);
     return {
       monthIndex,
+      year,
       label: monthFormatter.format(date),
-      entries: getEntriesForMonth(state.currentYear, monthIndex)
+      entries: getEntriesForMonth(year, monthIndex)
     };
   });
 
@@ -253,7 +349,7 @@ function renderCalendar() {
         <section class="month-card">
           <div class="month-header">
             <h3>${month.label}</h3>
-            <span>${month.entries.length} items</span>
+            <span>${month.year} · ${month.entries.length} items</span>
           </div>
           <div class="month-track">
             ${
@@ -340,6 +436,7 @@ function renderTimelineItem(item) {
 
 function renderUpcomingDeadlines() {
   const occurrences = getVisibleDeadlineOccurrences()
+    .filter((occurrence) => !occurrence.completed)
     .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))
     .slice(0, 18);
 
@@ -372,7 +469,8 @@ function renderUpcomingDeadlines() {
   elements.doneCount.textContent = String(stats.done);
 
   if (!occurrences.length) {
-    elements.deadlineList.innerHTML = '<p class="deadline-list-empty">No deadlines yet. Add an event to start building the runway.</p>';
+    elements.deadlineList.innerHTML =
+      '<p class="deadline-list-empty">No active deadlines right now. Add an event or enjoy the fact that you are ahead.</p>';
     return;
   }
 
@@ -384,32 +482,32 @@ function renderUpcomingDeadlines() {
       const deadline = deadlineMap.get(occurrence.deadline_id);
       const event = deadline ? eventMap.get(deadline.event_id) : null;
       const status = getDeadlineStatus(occurrence);
+      const urgencyColor = getDeadlineUrgencyColor(occurrence);
       return `
         <article class="deadline-row ${status.className}">
           <div class="deadline-row-header">
-            <div>
-              <h3>${escapeHtml(deadline?.title || "Untitled deadline")}</h3>
+            <div class="deadline-row-main">
+              <div class="deadline-row-title">
+                <span class="urgency-indicator" style="background:${urgencyColor}"></span>
+                <h3>${escapeHtml(deadline?.title || "Untitled deadline")}</h3>
+              </div>
               <p class="deadline-context">${escapeHtml(event?.title || "Unknown event")}</p>
             </div>
-            <span class="pill">${status.label}</span>
+            <div class="deadline-row-meta">
+              <p class="deadline-row-date">${longDateFormatter.format(new Date(occurrence.due_date))}</p>
+              <span class="pill">${status.label}</span>
+            </div>
           </div>
-          <p class="timeline-notes">${longDateFormatter.format(new Date(occurrence.due_date))}</p>
-          ${
-            deadline?.notes
-              ? `<p class="timeline-notes">${escapeHtml(deadline.notes)}</p>`
-              : ""
-          }
           <div class="timeline-actions">
             <button
               class="button button-link"
               type="button"
               data-action="toggle-deadline"
               data-occurrence-id="${occurrence.id}"
-              data-next-value="${occurrence.completed ? "false" : "true"}"
+              data-next-value="true"
             >
-              ${occurrence.completed ? "Mark incomplete" : "Mark done"}
+              Mark done
             </button>
-            ${event ? `<button class="button button-link" type="button" data-action="edit-event" data-event-id="${event.id}">Edit event</button>` : ""}
           </div>
         </article>
       `;
@@ -424,6 +522,7 @@ function getVisibleDeadlineOccurrences() {
   const deadlineMap = new Map(state.deadlines.map((deadline) => [deadline.id, deadline]));
   const now = startOfDay(today);
   const yearAhead = addDays(now, 365);
+
   return state.occurrences.filter((occurrence) => {
     const deadline = deadlineMap.get(occurrence.deadline_id);
     const event = deadline ? eventMap.get(deadline.event_id) : null;
@@ -457,6 +556,7 @@ function getEntriesForMonth(year, monthIndex) {
     if (!normalized || normalized.getMonth() !== monthIndex) {
       continue;
     }
+
     entries.push({
       kind: "event",
       eventId: event.id,
@@ -471,11 +571,13 @@ function getEntriesForMonth(year, monthIndex) {
     if (dueDate.getFullYear() !== year || dueDate.getMonth() !== monthIndex) {
       continue;
     }
+
     const deadline = deadlineMap.get(occurrence.deadline_id);
     const event = deadline ? eventMap.get(deadline.event_id) : null;
     if (!deadline || !event) {
       continue;
     }
+
     const status = getDeadlineStatus(occurrence);
     entries.push({
       kind: "deadline",
@@ -527,6 +629,31 @@ function getDeadlineStatus(occurrence) {
   }
 
   return { className: "", label: `${diffDays}d left` };
+}
+
+function getDeadlineUrgencyColor(occurrence) {
+  if (occurrence.completed) {
+    return "#3d8b68";
+  }
+
+  const due = startOfDay(new Date(occurrence.due_date));
+  const diffDays = diffInDays(startOfDay(today), due);
+
+  if (diffDays <= 0) {
+    return "#d94747";
+  }
+
+  if (diffDays > 30) {
+    return "#4f79d9";
+  }
+
+  const ratio = (30 - diffDays) / 30;
+  const start = { r: 61, g: 139, b: 104 };
+  const end = { r: 217, g: 71, b: 71 };
+  const r = Math.round(start.r + (end.r - start.r) * ratio);
+  const g = Math.round(start.g + (end.g - start.g) * ratio);
+  const b = Math.round(start.b + (end.b - start.b) * ratio);
+  return `rgb(${r}, ${g}, ${b})`;
 }
 
 function bindDynamicActions() {
@@ -642,11 +769,16 @@ function appendDeadlineField(deadline = null) {
 async function handleEventSubmit(event) {
   event.preventDefault();
 
+  if (!state.user) {
+    showStatus("Sign in again before editing your planner.", true);
+    return;
+  }
+
   const previousEvent = elements.eventId.value
     ? state.events.find((entry) => entry.id === elements.eventId.value)
     : null;
   const eventPayload = {
-    workspace_key: config.workspaceKey,
+    owner_user_id: state.user.id,
     title: elements.eventTitle.value.trim(),
     event_date: elements.eventDate.value,
     recurrence_type: elements.eventRecurrence.value,
@@ -736,7 +868,15 @@ async function handleEventSubmit(event) {
       showStatus(archiveError.message, true);
       return;
     }
-    await supabase.from("deadline_occurrences").delete().in("deadline_id", toArchive);
+
+    const { error: deleteArchivedOccurrencesError } = await supabase
+      .from("deadline_occurrences")
+      .delete()
+      .in("deadline_id", toArchive);
+    if (deleteArchivedOccurrencesError) {
+      showStatus(deleteArchivedOccurrencesError.message, true);
+      return;
+    }
   }
 
   closeEditor();
@@ -744,23 +884,25 @@ async function handleEventSubmit(event) {
 }
 
 function collectDeadlinePayloads(eventId) {
-  return Array.from(elements.deadlineFields.querySelectorAll(".deadline-card")).map((card, index) => {
-    const mode = card.querySelector(".deadline-mode").value;
-    const dueDate = card.querySelector(".deadline-date").value || null;
-    const daysBefore = card.querySelector(".deadline-days").value;
-    return {
-      id: card.querySelector(".deadline-id").value || null,
-      event_id: eventId,
-      workspace_key: config.workspaceKey,
-      title: card.querySelector(".deadline-title").value.trim(),
-      notes: card.querySelector(".deadline-notes").value.trim() || null,
-      due_mode: mode,
-      due_date: mode === "specific_date" ? dueDate : null,
-      days_before_event: mode === "days_before_event" ? Number(daysBefore || 0) : null,
-      sort_order: index,
-      archived: false
-    };
-  }).filter((payload) => payload.title);
+  return Array.from(elements.deadlineFields.querySelectorAll(".deadline-card"))
+    .map((card, index) => {
+      const mode = card.querySelector(".deadline-mode").value;
+      const dueDate = card.querySelector(".deadline-date").value || null;
+      const daysBefore = card.querySelector(".deadline-days").value;
+      return {
+        id: card.querySelector(".deadline-id").value || null,
+        owner_user_id: state.user.id,
+        event_id: eventId,
+        title: card.querySelector(".deadline-title").value.trim(),
+        notes: card.querySelector(".deadline-notes").value.trim() || null,
+        due_mode: mode,
+        due_date: mode === "specific_date" ? dueDate : null,
+        days_before_event: mode === "days_before_event" ? Number(daysBefore || 0) : null,
+        sort_order: index,
+        archived: false
+      };
+    })
+    .filter((payload) => payload.title);
 }
 
 async function handleDeleteEvent() {
@@ -769,7 +911,9 @@ async function handleDeleteEvent() {
     return;
   }
 
-  const eventDeadlines = state.deadlines.filter((deadline) => deadline.event_id === eventId).map((deadline) => deadline.id);
+  const eventDeadlines = state.deadlines
+    .filter((deadline) => deadline.event_id === eventId)
+    .map((deadline) => deadline.id);
 
   const { error: eventError } = await supabase.from("events").update({ archived: true }).eq("id", eventId);
   if (eventError) {
@@ -778,26 +922,49 @@ async function handleDeleteEvent() {
   }
 
   if (eventDeadlines.length) {
-    await supabase.from("deadlines").update({ archived: true }).in("id", eventDeadlines);
-    await supabase.from("deadline_occurrences").delete().in("deadline_id", eventDeadlines);
+    const { error: deadlinesError } = await supabase
+      .from("deadlines")
+      .update({ archived: true })
+      .in("id", eventDeadlines);
+    if (deadlinesError) {
+      showStatus(deadlinesError.message, true);
+      return;
+    }
+
+    const { error: occurrencesError } = await supabase
+      .from("deadline_occurrences")
+      .delete()
+      .in("deadline_id", eventDeadlines);
+    if (occurrencesError) {
+      showStatus(occurrencesError.message, true);
+      return;
+    }
   }
 
   closeEditor();
   await refreshData();
 }
 
-function applyZoom() {
-  elements.calendarGrid.style.transform = `scale(${state.zoom})`;
+function getDisplayedMonths() {
+  const startMonth = today.getMonth();
+  return Array.from({ length: 12 }, (_, offset) => {
+    const absoluteMonth = startMonth + offset;
+    return {
+      monthIndex: absoluteMonth % 12,
+      year: state.currentYear + Math.floor(absoluteMonth / 12)
+    };
+  });
 }
 
-function scrollToToday() {
-  state.currentYear = today.getFullYear();
-  render();
-  const monthCard = elements.calendarGrid.children[today.getMonth()];
-  if (!monthCard) {
-    return;
+function formatDisplayedRange(displayedMonths) {
+  const first = displayedMonths[0];
+  const last = displayedMonths[displayedMonths.length - 1];
+
+  if (first.year === last.year) {
+    return String(first.year);
   }
-  monthCard.scrollIntoView({ behavior: "smooth", block: "center" });
+
+  return `${monthFormatter.format(new Date(first.year, first.monthIndex, 1))} ${first.year} - ${monthFormatter.format(new Date(last.year, last.monthIndex, 1))} ${last.year}`;
 }
 
 function showStatus(message, isError = false) {

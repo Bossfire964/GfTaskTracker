@@ -1,8 +1,12 @@
 create extension if not exists pgcrypto;
 
-create table if not exists public.events (
+drop table if exists public.deadline_occurrences cascade;
+drop table if exists public.deadlines cascade;
+drop table if exists public.events cascade;
+
+create table public.events (
   id uuid primary key default gen_random_uuid(),
-  workspace_key text not null,
+  owner_user_id uuid not null references auth.users(id) on delete cascade,
   title text not null,
   event_date date not null,
   recurrence_type text not null check (recurrence_type in ('one_time', 'yearly')),
@@ -13,9 +17,9 @@ create table if not exists public.events (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
-create table if not exists public.deadlines (
+create table public.deadlines (
   id uuid primary key default gen_random_uuid(),
-  workspace_key text not null,
+  owner_user_id uuid not null references auth.users(id) on delete cascade,
   event_id uuid not null references public.events(id) on delete cascade,
   title text not null,
   due_mode text not null check (due_mode in ('days_before_event', 'specific_date')),
@@ -33,9 +37,9 @@ create table if not exists public.deadlines (
   )
 );
 
-create table if not exists public.deadline_occurrences (
+create table public.deadline_occurrences (
   id uuid primary key default gen_random_uuid(),
-  workspace_key text not null,
+  owner_user_id uuid not null references auth.users(id) on delete cascade,
   deadline_id uuid not null references public.deadlines(id) on delete cascade,
   occurrence_year integer not null,
   due_date date not null,
@@ -46,9 +50,9 @@ create table if not exists public.deadline_occurrences (
   unique (deadline_id, occurrence_year)
 );
 
-create index if not exists events_workspace_idx on public.events(workspace_key, archived, event_date);
-create index if not exists deadlines_workspace_idx on public.deadlines(workspace_key, archived, event_id);
-create index if not exists deadline_occurrences_workspace_idx on public.deadline_occurrences(workspace_key, due_date);
+create index events_owner_idx on public.events(owner_user_id, archived, event_date);
+create index deadlines_owner_idx on public.deadlines(owner_user_id, archived, event_id);
+create index deadline_occurrences_owner_idx on public.deadline_occurrences(owner_user_id, due_date);
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -56,6 +60,52 @@ language plpgsql
 as $$
 begin
   new.updated_at = timezone('utc', now());
+  return new;
+end;
+$$;
+
+create or replace function public.deadline_event_owner_matches()
+returns trigger
+language plpgsql
+as $$
+declare
+  event_owner uuid;
+begin
+  select owner_user_id into event_owner
+  from public.events
+  where id = new.event_id;
+
+  if event_owner is null then
+    raise exception 'Event not found for deadline';
+  end if;
+
+  if event_owner <> new.owner_user_id then
+    raise exception 'Deadline owner must match event owner';
+  end if;
+
+  return new;
+end;
+$$;
+
+create or replace function public.occurrence_deadline_owner_matches()
+returns trigger
+language plpgsql
+as $$
+declare
+  deadline_owner uuid;
+begin
+  select owner_user_id into deadline_owner
+  from public.deadlines
+  where id = new.deadline_id;
+
+  if deadline_owner is null then
+    raise exception 'Deadline not found for occurrence';
+  end if;
+
+  if deadline_owner <> new.owner_user_id then
+    raise exception 'Occurrence owner must match deadline owner';
+  end if;
+
   return new;
 end;
 $$;
@@ -78,30 +128,39 @@ before update on public.deadline_occurrences
 for each row
 execute procedure public.set_updated_at();
 
+drop trigger if exists deadlines_owner_guard on public.deadlines;
+create trigger deadlines_owner_guard
+before insert or update on public.deadlines
+for each row
+execute procedure public.deadline_event_owner_matches();
+
+drop trigger if exists occurrences_owner_guard on public.deadline_occurrences;
+create trigger occurrences_owner_guard
+before insert or update on public.deadline_occurrences
+for each row
+execute procedure public.occurrence_deadline_owner_matches();
+
 alter table public.events enable row level security;
 alter table public.deadlines enable row level security;
 alter table public.deadline_occurrences enable row level security;
 
-drop policy if exists "anon events access" on public.events;
-create policy "anon events access"
+create policy "users manage own events"
 on public.events
 for all
-to anon
-using (true)
-with check (true);
+to authenticated
+using (owner_user_id = auth.uid())
+with check (owner_user_id = auth.uid());
 
-drop policy if exists "anon deadlines access" on public.deadlines;
-create policy "anon deadlines access"
+create policy "users manage own deadlines"
 on public.deadlines
 for all
-to anon
-using (true)
-with check (true);
+to authenticated
+using (owner_user_id = auth.uid())
+with check (owner_user_id = auth.uid());
 
-drop policy if exists "anon deadline occurrences access" on public.deadline_occurrences;
-create policy "anon deadline occurrences access"
+create policy "users manage own deadline occurrences"
 on public.deadline_occurrences
 for all
-to anon
-using (true)
-with check (true);
+to authenticated
+using (owner_user_id = auth.uid())
+with check (owner_user_id = auth.uid());
