@@ -1,6 +1,7 @@
 const { createClient } = window.supabase;
 const config = window.APP_CONFIG || {};
 const today = new Date();
+const STORAGE_KEY = "relationship-runway-access";
 
 const state = {
   currentYear: today.getFullYear(),
@@ -8,7 +9,6 @@ const state = {
   deadlines: [],
   occurrences: [],
   user: null,
-  loginEmail: "",
   isConfigured: Boolean(
     config.supabaseUrl &&
       config.supabaseAnonKey &&
@@ -28,7 +28,7 @@ const longDateFormatter = new Intl.DateTimeFormat("en-US", {
 const elements = {
   authGate: document.querySelector("#authGate"),
   authForm: document.querySelector("#authForm"),
-  authEmail: document.querySelector("#authEmail"),
+  authCode: document.querySelector("#authCode"),
   authStatus: document.querySelector("#authStatus"),
   appShell: document.querySelector("#appShell"),
   currentUserEmail: document.querySelector("#currentUserEmail"),
@@ -55,13 +55,7 @@ const elements = {
 };
 
 const supabase = state.isConfigured
-  ? createClient(config.supabaseUrl, config.supabaseAnonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true
-      }
-    })
+  ? createClient(config.supabaseUrl, config.supabaseAnonKey)
   : null;
 
 init().catch((error) => {
@@ -81,37 +75,9 @@ async function init() {
     return;
   }
 
-  const {
-    data: { session },
-    error
-  } = await supabase.auth.getSession();
-
-  if (error) {
-    showAuthState(false);
-    showAuthStatus(error.message, true);
-    return;
-  }
-
-  supabase.auth.onAuthStateChange(async (event, sessionData) => {
-    if (event === "SIGNED_OUT") {
-      resetPlannerState();
-      showAuthState(false);
-      showAuthStatus("Signed out.", false);
-      return;
-    }
-
-    if (sessionData?.user) {
-      state.user = sessionData.user;
-      state.currentYear = today.getFullYear();
-      showAuthState(true);
-      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") {
-        await refreshData();
-      }
-    }
-  });
-
-  if (session?.user) {
-    state.user = session.user;
+  const savedAccess = readStoredAccess();
+  if (savedAccess) {
+    state.user = savedAccess;
     showAuthState(true);
     await refreshData();
   } else {
@@ -120,7 +86,7 @@ async function init() {
 }
 
 function bindUI() {
-  elements.authForm.addEventListener("submit", handleLoginSubmit);
+  elements.authForm.addEventListener("submit", handleCodeSubmit);
   elements.logoutButton.addEventListener("click", handleLogout);
   elements.openEditorButton.addEventListener("click", () => openEditor());
   document.querySelector("#closeEditorButton").addEventListener("click", closeEditor);
@@ -144,46 +110,85 @@ function bindUI() {
   elements.editorDialog.addEventListener("close", resetEditor);
 }
 
-async function handleLoginSubmit(event) {
+async function handleCodeSubmit(event) {
   event.preventDefault();
+  const inputCode = elements.authCode.value.trim();
 
-  const email = elements.authEmail.value.trim().toLowerCase();
-  if (!email) {
-    showAuthStatus("Enter the email address you created in Supabase.", true);
+  if (!inputCode) {
+    showAuthStatus("Enter the code you want this browser to use.", true);
     return;
   }
 
-  state.loginEmail = email;
-  const redirectTo = `${window.location.origin}${window.location.pathname}`;
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: {
-      emailRedirectTo: redirectTo
-    }
-  });
+  const { data, error } = await supabase
+    .from("access_codes")
+    .select("id, label, code, archived")
+    .eq("archived", false)
+    .order("label", { ascending: true });
 
   if (error) {
     showAuthStatus(error.message, true);
     return;
   }
 
-  showAuthStatus(`Magic link sent to ${email}. Open it in this browser to sign in.`, false);
+  const match = (data || []).find((entry) => String(entry.code || "").trim() === inputCode);
+
+  if (!match) {
+    showAuthStatus("That code was not found.", true);
+    return;
+  }
+
+  state.user = match;
+  writeStoredAccess(match);
+  state.currentYear = today.getFullYear();
+  showAuthState(true);
+  showAuthStatus("");
+  await refreshData();
 }
 
-async function handleLogout() {
-  const { error } = await supabase.auth.signOut();
-  if (error) {
-    showStatus(error.message, true);
+function handleLogout() {
+  clearStoredAccess();
+  resetPlannerState();
+  showAuthState(false);
+}
+
+function readStoredAccess() {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed?.id || !parsed?.code) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
   }
+}
+
+function writeStoredAccess(access) {
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(access));
+}
+
+function clearStoredAccess() {
+  window.localStorage.removeItem(STORAGE_KEY);
 }
 
 function showAuthState(isSignedIn) {
   elements.authGate.classList.toggle("hidden", isSignedIn);
   elements.appShell.classList.toggle("hidden", !isSignedIn);
-  elements.currentUserEmail.textContent = state.user?.email || "";
+  elements.currentUserEmail.textContent = state.user?.label || "";
 }
 
 function showAuthStatus(message, isError = false) {
+  if (!message) {
+    elements.authStatus.textContent = "";
+    elements.authStatus.classList.add("hidden");
+    elements.authStatus.classList.remove("auth-status-error");
+    return;
+  }
+
   elements.authStatus.textContent = message;
   elements.authStatus.classList.remove("hidden");
   elements.authStatus.classList.toggle("auth-status-error", isError);
@@ -214,11 +219,26 @@ async function refreshData() {
 }
 
 async function fetchData() {
+  const ownerId = state.user.id;
   const [{ data: events, error: eventsError }, { data: deadlines, error: deadlinesError }, { data: occurrences, error: occurrencesError }] =
     await Promise.all([
-      supabase.from("events").select("*").eq("archived", false).order("event_date", { ascending: true }),
-      supabase.from("deadlines").select("*").eq("archived", false).order("sort_order", { ascending: true }),
-      supabase.from("deadline_occurrences").select("*").order("due_date", { ascending: true })
+      supabase
+        .from("events")
+        .select("*")
+        .eq("owner_access_code_id", ownerId)
+        .eq("archived", false)
+        .order("event_date", { ascending: true }),
+      supabase
+        .from("deadlines")
+        .select("*")
+        .eq("owner_access_code_id", ownerId)
+        .eq("archived", false)
+        .order("sort_order", { ascending: true }),
+      supabase
+        .from("deadline_occurrences")
+        .select("*")
+        .eq("owner_access_code_id", ownerId)
+        .order("due_date", { ascending: true })
     ]);
 
   if (eventsError || deadlinesError || occurrencesError) {
@@ -233,11 +253,7 @@ async function fetchData() {
 }
 
 async function ensureRecurringOccurrences(years) {
-  if (!state.user) {
-    return;
-  }
-
-  if (!state.deadlines.length) {
+  if (!state.user || !state.deadlines.length) {
     return;
   }
 
@@ -272,7 +288,7 @@ async function ensureRecurringOccurrences(years) {
       }
 
       rowsToInsert.push({
-        owner_user_id: state.user.id,
+        owner_access_code_id: state.user.id,
         deadline_id: deadline.id,
         occurrence_year: year,
         due_date: dueDate,
@@ -770,7 +786,7 @@ async function handleEventSubmit(event) {
   event.preventDefault();
 
   if (!state.user) {
-    showStatus("Sign in again before editing your planner.", true);
+    showStatus("Enter your code again before editing your planner.", true);
     return;
   }
 
@@ -778,7 +794,7 @@ async function handleEventSubmit(event) {
     ? state.events.find((entry) => entry.id === elements.eventId.value)
     : null;
   const eventPayload = {
-    owner_user_id: state.user.id,
+    owner_access_code_id: state.user.id,
     title: elements.eventTitle.value.trim(),
     event_date: elements.eventDate.value,
     recurrence_type: elements.eventRecurrence.value,
@@ -891,7 +907,7 @@ function collectDeadlinePayloads(eventId) {
       const daysBefore = card.querySelector(".deadline-days").value;
       return {
         id: card.querySelector(".deadline-id").value || null,
-        owner_user_id: state.user.id,
+        owner_access_code_id: state.user.id,
         event_id: eventId,
         title: card.querySelector(".deadline-title").value.trim(),
         notes: card.querySelector(".deadline-notes").value.trim() || null,

@@ -3,10 +3,19 @@ create extension if not exists pgcrypto;
 drop table if exists public.deadline_occurrences cascade;
 drop table if exists public.deadlines cascade;
 drop table if exists public.events cascade;
+drop table if exists public.access_codes cascade;
+
+create table public.access_codes (
+  id uuid primary key default gen_random_uuid(),
+  label text not null,
+  code text not null unique,
+  archived boolean not null default false,
+  created_at timestamptz not null default timezone('utc', now())
+);
 
 create table public.events (
   id uuid primary key default gen_random_uuid(),
-  owner_user_id uuid not null references auth.users(id) on delete cascade,
+  owner_access_code_id uuid not null references public.access_codes(id) on delete cascade,
   title text not null,
   event_date date not null,
   recurrence_type text not null check (recurrence_type in ('one_time', 'yearly')),
@@ -19,7 +28,7 @@ create table public.events (
 
 create table public.deadlines (
   id uuid primary key default gen_random_uuid(),
-  owner_user_id uuid not null references auth.users(id) on delete cascade,
+  owner_access_code_id uuid not null references public.access_codes(id) on delete cascade,
   event_id uuid not null references public.events(id) on delete cascade,
   title text not null,
   due_mode text not null check (due_mode in ('days_before_event', 'specific_date')),
@@ -39,7 +48,7 @@ create table public.deadlines (
 
 create table public.deadline_occurrences (
   id uuid primary key default gen_random_uuid(),
-  owner_user_id uuid not null references auth.users(id) on delete cascade,
+  owner_access_code_id uuid not null references public.access_codes(id) on delete cascade,
   deadline_id uuid not null references public.deadlines(id) on delete cascade,
   occurrence_year integer not null,
   due_date date not null,
@@ -50,9 +59,10 @@ create table public.deadline_occurrences (
   unique (deadline_id, occurrence_year)
 );
 
-create index events_owner_idx on public.events(owner_user_id, archived, event_date);
-create index deadlines_owner_idx on public.deadlines(owner_user_id, archived, event_id);
-create index deadline_occurrences_owner_idx on public.deadline_occurrences(owner_user_id, due_date);
+create index access_codes_code_idx on public.access_codes(code, archived);
+create index events_owner_idx on public.events(owner_access_code_id, archived, event_date);
+create index deadlines_owner_idx on public.deadlines(owner_access_code_id, archived, event_id);
+create index deadline_occurrences_owner_idx on public.deadline_occurrences(owner_access_code_id, due_date);
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -71,7 +81,7 @@ as $$
 declare
   event_owner uuid;
 begin
-  select owner_user_id into event_owner
+  select owner_access_code_id into event_owner
   from public.events
   where id = new.event_id;
 
@@ -79,7 +89,7 @@ begin
     raise exception 'Event not found for deadline';
   end if;
 
-  if event_owner <> new.owner_user_id then
+  if event_owner <> new.owner_access_code_id then
     raise exception 'Deadline owner must match event owner';
   end if;
 
@@ -94,7 +104,7 @@ as $$
 declare
   deadline_owner uuid;
 begin
-  select owner_user_id into deadline_owner
+  select owner_access_code_id into deadline_owner
   from public.deadlines
   where id = new.deadline_id;
 
@@ -102,7 +112,7 @@ begin
     raise exception 'Deadline not found for occurrence';
   end if;
 
-  if deadline_owner <> new.owner_user_id then
+  if deadline_owner <> new.owner_access_code_id then
     raise exception 'Occurrence owner must match deadline owner';
   end if;
 
@@ -140,27 +150,34 @@ before insert or update on public.deadline_occurrences
 for each row
 execute procedure public.occurrence_deadline_owner_matches();
 
+alter table public.access_codes enable row level security;
 alter table public.events enable row level security;
 alter table public.deadlines enable row level security;
 alter table public.deadline_occurrences enable row level security;
 
-create policy "users manage own events"
+create policy "public reads access codes"
+on public.access_codes
+for select
+to public
+using (archived = false);
+
+create policy "public manages events"
 on public.events
 for all
-to authenticated
-using (owner_user_id = auth.uid())
-with check (owner_user_id = auth.uid());
+to public
+using (true)
+with check (true);
 
-create policy "users manage own deadlines"
+create policy "public manages deadlines"
 on public.deadlines
 for all
-to authenticated
-using (owner_user_id = auth.uid())
-with check (owner_user_id = auth.uid());
+to public
+using (true)
+with check (true);
 
-create policy "users manage own deadline occurrences"
+create policy "public manages deadline occurrences"
 on public.deadline_occurrences
 for all
-to authenticated
-using (owner_user_id = auth.uid())
-with check (owner_user_id = auth.uid());
+to public
+using (true)
+with check (true);

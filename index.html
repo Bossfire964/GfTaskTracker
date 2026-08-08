@@ -10,18 +10,18 @@
     <section id="authGate" class="auth-gate panel">
       <div class="auth-copy">
         <p class="eyebrow">Private Relationship Planner</p>
-        <h1>Sign in to your planner.</h1>
+        <h1>Enter your planner code.</h1>
         <p class="hero-copy">
-          Use the email address you created in Supabase. The site sends a magic
-          link and opens your private planner in this browser.
+          Use the code you assigned to this person. This browser will remember
+          that code until you log out.
         </p>
       </div>
       <form id="authForm" class="auth-form">
         <label>
-          <span>Email</span>
-          <input id="authEmail" type="email" autocomplete="email" required />
+          <span>Code</span>
+          <input id="authCode" type="text" autocomplete="one-time-code" required />
         </label>
-        <button class="button button-primary" type="submit">Send magic link</button>
+        <button class="button button-primary" type="submit">Enter planner</button>
         <p id="authStatus" class="auth-status hidden"></p>
       </form>
     </section>
@@ -42,7 +42,7 @@
             Add event
           </button>
           <button id="logoutButton" class="button button-secondary" type="button">
-            Log out
+            Switch code
           </button>
         </div>
       </header>

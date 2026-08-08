@@ -13,15 +13,14 @@ Static GitHub Pages app for tracking important yearly dates and the prep deadlin
 ## Supabase setup
 
 1. In Supabase, open the SQL editor and run `supabase-schema.sql`.
-2. In `Authentication -> Providers`, enable Email and magic-link login.
-3. In `Authentication -> URL Configuration`, add:
-   - your GitHub Pages URL
-   - `http://localhost:8000`
-4. In `Authentication -> Users`, create the small set of users who should have access.
-5. Open `config.js` and replace:
+2. In the `access_codes` table, create one row per person/browser code you want to use.
+3. Recommended columns to fill:
+   - `label`: human name like `Luke` or `Deniz`
+   - `code`: the code they will type on the login page
+4. Open `config.js` and replace:
    - `supabaseUrl`
    - `supabaseAnonKey`
-6. In Supabase `Project Settings -> API`, copy the project URL and anon public key.
+5. In Supabase `Project Settings -> API`, copy the project URL and anon public key.
 
 ## Hosting on GitHub Pages
 
@@ -31,7 +30,7 @@ Static GitHub Pages app for tracking important yearly dates and the prep deadlin
 
 ## Notes about privacy
 
-This app uses Supabase Auth with magic-link email login. The anon key is still public in the frontend, but planner data is protected by Row Level Security so each authenticated user can only access their own rows.
+This version uses a lightweight code gate, not real authentication. The browser stores the selected code in localStorage, and the planner filters data by that code owner. This is convenient for 2 or 3 trusted users, but it is not strong security.
 
 ## How recurring deadlines work
 
@@ -41,9 +40,9 @@ This app uses Supabase Auth with magic-link email login. The anon key is still p
   - `specific_date`: good for fixed dates you want attached to the event
 - The app automatically creates deadline occurrence rows for the current and next year so completion can be tracked per year.
 
-## Auth flow
+## Code flow
 
-- A user enters their email in the browser.
-- Supabase sends a magic link.
-- Opening that link in the same browser signs the user in and loads only their planner data.
-- Logging out returns the browser to the sign-in screen.
+- A user enters a shared code in the browser.
+- The app looks up that code in `access_codes`.
+- The browser stores that selected code locally and reloads the same planner next time.
+- `Switch code` clears the saved browser state and returns to the code screen.
